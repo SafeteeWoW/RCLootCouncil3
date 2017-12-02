@@ -31,6 +31,8 @@
 + LUA 5.1 guide:
   + https://www.lua.org/manual/5.1/
   + WoW has been using Lua 5.1 for many years. It does not use the later version of Lua.
++ Lua performance guide:
+  + https://www.lua.org/gems/sample.pdf
 ----
 
 ###### In-game development tools:
