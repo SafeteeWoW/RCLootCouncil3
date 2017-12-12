@@ -283,7 +283,7 @@ local function DeserializeValue(iter, single, ctl, data)
 					error("Unexpected data for RCSerializer after table end marker")
 				end
 				break
-			end	-- ignore ^t's data
+			end
 			k = DeserializeValue(iter, true, ctl, data)
 			if k==nil then
 				error("Invalid RCSerializer table format (no table end marker)")
@@ -295,8 +295,27 @@ local function DeserializeValue(iter, single, ctl, data)
 			end
 			res[k] = v
 		end
+	elseif ctl == SEPARATOR_ARRAY_START then
+		-- ignore ^T's data, future extensibility?
+		res = {}
+		local k = 1
+		while true do
+			ctl, data = iter()
+			if ctl == SEPARATOR_ARRAY_END then
+				if data ~= "" then
+					error("Unexpected data for RCSerializer after array end marker")
+				end
+				break
+			end
+			local v = DeserializeValue(iter, true, ctl, data)
+			if v == nil then
+				error("Invalid RCSerializer table format (no table end marker)")
+			end
+			res[k] = v
+			k = k + 1
+		end
 	else
-		error("Invalid RCSerializer control code '"..ctl.."'")
+		error("Invalid RCSerializer control code '"..ctl.."'(".."character number code:"..strbyte(ctl)..")")
 	end
 
 	if not single then
@@ -312,7 +331,7 @@ end
 -- @return true followed by a list of values, OR false followed by an error message
 function RCSerializer:Deserialize(str)
 	local STR_END = SEPARATOR_NUMBER.."END"
-	local iter = gmatch(str..STR_END, "([\002-\011])([^\002-\011]*)")
+	local iter = gmatch(str..STR_END, "([\002-\012])([^\002-\012]*)")
 	return pcall(DeserializeValue, iter)
 end
 
