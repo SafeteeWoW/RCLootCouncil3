@@ -1,2 +1,3 @@
-cmd: cmd /K luac-wow -l -p {FILE_ACTIVE} | lua-wow Development_Tools\FindGlobals.lua {FILE_ACTIVE} && luacheck {FILE_ACTIVE} -g
+cmd: cmd /K lua-wow test\RCLibs\Serializer.lua
+#luac-wow -l -p {FILE_ACTIVE} | lua-wow Development_Tools\FindGlobals.lua {FILE_ACTIVE} && luacheck {FILE_ACTIVE} -g && 
 sh: false
