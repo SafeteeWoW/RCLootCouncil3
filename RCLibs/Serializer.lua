@@ -85,7 +85,7 @@ local function IsTableArray(t)
 	local i = 0
 	for _, _ in pairs(t) do
 		i = i + 1
-		if not t[i] then
+		if rawget(t, i) == nil then -- There is some issue for AceDB if not to use rawget
 			return false
 		end
 	end
