@@ -69,7 +69,13 @@ local SEPARATOR_ARRAY_END = '\009' -- Array ends
 local SEPARATOR_TRUE = '\010' -- true
 local SEPARATOR_FALSE = '\011' -- false
 local SEPARATOR_NIL = '\012' -- nil
-local SEPARATOR_LAST = '\012'
+local SEPARATOR_STRING_REPLACEMENT = '\013' -- For strings that shown more than once
+local SEPARATOR_LAST = '\013'
+
+-- For string replacment
+local strIndex = 0
+local strToIndex = {}
+local indexToStr = {}
 
 -- Serialization functions
 local function SerializeStringHelper(ch)	-- Used by SerializeValue for strings
@@ -92,15 +98,22 @@ local function IsTableArray(t)
 	return true
 end
 
-
 local function SerializeValue(v, res, nres)
 	-- We use "^" as a value separator, followed by one byte for type indicator
 	local t = type(v)
 
 	if t == "string" then		-- ^S = string (escaped to remove nonprints, "^"s, etc)
-		res[nres+1] = SEPARATOR_STRING
-		res[nres+2] = gsub(v, ".", SerializeStringHelper)
-		nres = nres +2
+		if not strToIndex[v] then
+			res[nres+1] = SEPARATOR_STRING
+			res[nres+2] = gsub(v, ".", SerializeStringHelper)
+			nres = nres + 2
+			strToIndex[v] = strIndex
+			strIndex = strIndex + 1
+		else
+			res[nres+1] = SEPARATOR_STRING_REPLACEMENT
+			res[nres+2] = tostring(strToIndex[v])
+			nres = nres + 2
+		end
 
 	elseif t=="number" then	-- ^N = number (just tostring()ed) or ^F (float components)
 		local str = tostring(v)
@@ -182,6 +195,8 @@ local serializeTbl = { } -- Unlike AceSerializer-3.0, there is no header in the 
 -- @return The data in its serialized form (string)
 function RCSerializer:Serialize(...)
 	local nres = 0
+	strIndex = 0
+	wipe(strToIndex)
 
 	for i=1, select("#", ...) do
 		local v = select(i, ...)
@@ -238,6 +253,14 @@ local function DeserializeValue(iter, single, ctl, data)
 	local res
 	if ctl == SEPARATOR_STRING then
 		res = gsub(data, SEPARATOR_ESCAPE..".", DeserializeStringHelper)
+		indexToStr[strIndex] = res
+		strIndex = strIndex + 1
+	elseif ctl == SEPARATOR_STRING_REPLACEMENT then
+		local index = tonumber(data)
+		if not index or not indexToStr[index] then
+			error("Invalid string replacement index in RCSerializer")
+		end
+		res = indexToStr[index]
 	elseif ctl == SEPARATOR_NUMBER then
 		if data == "END" then -- End of string mark
 			return
@@ -330,8 +353,10 @@ end
 -- @param str The serialized data (from :Serialize)
 -- @return true followed by a list of values, OR false followed by an error message
 function RCSerializer:Deserialize(str)
+	strIndex = 0
+	wipe(indexToStr)
 	local STR_END = SEPARATOR_NUMBER.."END"
-	local iter = gmatch(str..STR_END, "([\002-\012])([^\002-\012]*)")
+	local iter = gmatch(str..STR_END, "([\002-\013])([^\002-\013]*)")
 	return pcall(DeserializeValue, iter)
 end
 
