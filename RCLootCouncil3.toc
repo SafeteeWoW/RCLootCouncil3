@@ -1,0 +1,5 @@
+## Interface: 70300
+## Notes: Early development of RCLootCouncil3
+## Title: RCLootCouncil3
+
+RCLibs\libs.xml
