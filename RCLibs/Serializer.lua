@@ -82,7 +82,7 @@ local counts = {}
 -- Serialization functions
 local function SerializeStringHelper(ch)	-- Used by SerializeValue for strings
 	local n = strbyte(ch)
-	if ch == ESCAPE and SEPARATOR_FIRST <= ch and ch <= SEPARATOR_LAST then
+	if ch == "ESCAPE" or (SEPARATOR_FIRST <= ch and ch <= SEPARATOR_LAST) then
 		return ESCAPE..strchar(n+47)
 	else
 		return ch
@@ -287,6 +287,8 @@ local function DeserializeValue(iter, single, ctl, data)
 
 	local res
 	if ctl == SEPARATOR_STRING then
+		res = gsub(data, ESCAPE..".", DeserializeStringHelper)
+	elseif ctl == SEPARATOR_STRING_REUSED then
 		res = gsub(data, ESCAPE..".", DeserializeStringHelper)
 		indexToStr[strIndex] = res
 		strIndex = strIndex + 1
