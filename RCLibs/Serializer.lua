@@ -45,7 +45,8 @@ local strbyte, strchar, gsub, gmatch, format = string.byte, string.char, string.
 local assert, error, pcall = assert, error, pcall
 local type, tostring, tonumber = type, tostring, tonumber
 local pairs, ipairs, select, frexp, ldexp = pairs, ipairs, select, math.frexp, math.ldexp
-local tconcat = table.concat
+local tconcat, tinsert = table.concat, table.insert
+local floor = math.floor
 
 -- quick copies of string representations of wonky numbers
 local inf = math.huge
@@ -72,9 +73,11 @@ local SEPARATOR_NIL = '\012' -- nil
 local SEPARATOR_STRING_REPLACEMENT = '\013' -- For strings that are replaced (encoded as "reused string index")
 local SEPARATOR_STRING_REUSED = '\014' -- For strings that are reused (encoded as original string)
 local SEPARATOR_LAST = '\014'
+local CH_SEPARATOR_LAST = strbyte(SEPARATOR_LAST)
+local COMPRESSED_INT_BASE = 255 - CH_SEPARATOR_LAST
 
 -- For string replacment
-local strIndex = 0
+local strIndexSer = 0
 local strToIndex = {}
 local indexToStr = {}
 local counts = {}
@@ -121,18 +124,44 @@ local function GetValueCounts(v)
 	end
 end
 
+local function IntToCompressedInt(int)
+	local t = {}
+	if int == 0 then
+		return strchar(CH_SEPARATOR_LAST + 1)
+	else
+		while int > 0 do
+			local rem = int % COMPRESSED_INT_BASE
+			int = floor(int / COMPRESSED_INT_BASE)
+			local ch = strchar(rem + CH_SEPARATOR_LAST + 1)
+			tinsert(t, 1, ch)
+		end
+		return tconcat(t)
+	end
+end
+
+local function CompressedIntToInt(cInt)
+	local int = 0
+	local multiplier = 1
+	for i=cInt:len(), 1, -1 do
+		local n = strbyte(cInt, i) - CH_SEPARATOR_LAST - 1
+		int = int + n * multiplier
+		multiplier = multiplier * COMPRESSED_INT_BASE
+	end
+	return int
+end
+
 local function SerializeValue(v, res, nres)
 	-- We use "^" as a value separator, followed by one byte for type indicator
 	local t = type(v)
 
 	if t == "string" then		-- ^S = string (escaped to remove nonprints, "^"s, etc)
 		if not strToIndex[v] then
-			if counts[v] > 1 and v:len() > tostring(strIndex):len() then
+			if counts[v] > 1 and v:len() > tostring(strIndexSer):len() then
 				res[nres+1] = SEPARATOR_STRING_REUSED
 				res[nres+2] = gsub(v, ".", SerializeStringHelper)
 				nres = nres + 2
-				strToIndex[v] = strIndex
-				strIndex = strIndex + 1
+				strToIndex[v] = strIndexSer
+				strIndexSer = strIndexSer + 1
 			else
 				res[nres+1] = SEPARATOR_STRING
 				res[nres+2] = gsub(v, ".", SerializeStringHelper)
@@ -140,7 +169,7 @@ local function SerializeValue(v, res, nres)
 			end
 		else
 			res[nres+1] = SEPARATOR_STRING_REPLACEMENT
-			res[nres+2] = tostring(strToIndex[v])
+			res[nres+2] = IntToCompressedInt(strToIndex[v])
 			nres = nres + 2
 		end
 
@@ -224,7 +253,7 @@ local serializeTbl = { } -- Unlike AceSerializer-3.0, there is no header in the 
 -- @return The data in its serialized form (string)
 function RCSerializer:Serialize(...)
 	local nres = 0
-	strIndex = 0
+	strIndexSer = 1
 	wipe(strToIndex)
 	wipe(counts)
 
@@ -290,10 +319,10 @@ local function DeserializeValue(iter, single, ctl, data)
 		res = gsub(data, ESCAPE..".", DeserializeStringHelper)
 	elseif ctl == SEPARATOR_STRING_REUSED then
 		res = gsub(data, ESCAPE..".", DeserializeStringHelper)
-		indexToStr[strIndex] = res
-		strIndex = strIndex + 1
+		indexToStr[strIndexDeser] = res
+		strIndexDeser = strIndexDeser + 1
 	elseif ctl == SEPARATOR_STRING_REPLACEMENT then
-		local index = tonumber(data)
+		local index = CompressedIntToInt(data)
 		if not index or not indexToStr[index] then
 			error("Invalid string replacement index in RCSerializer")
 		end
@@ -390,7 +419,7 @@ end
 -- @param str The serialized data (from :Serialize)
 -- @return true followed by a list of values, OR false followed by an error message
 function RCSerializer:Deserialize(str)
-	strIndex = 0
+	strIndexDeser = 1
 	wipe(indexToStr)
 	local STR_END = SEPARATOR_NUMBER.."END"
 	local iter = gmatch(str..STR_END, "(["..SEPARATOR_FIRST.."-"..SEPARATOR_LAST.."])([^"..SEPARATOR_FIRST.."-"..SEPARATOR_LAST.."]*)")
@@ -404,6 +433,8 @@ end
 RCSerializer.internals = {	-- for test scripts
 	SerializeValue = SerializeValue,
 	SerializeStringHelper = SerializeStringHelper,
+	IntToCompressedInt = IntToCompressedInt,
+	CompressedIntToInt = CompressedIntToInt,
 }
 
 local mixins = {

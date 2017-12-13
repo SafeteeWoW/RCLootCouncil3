@@ -4,10 +4,19 @@
 function TestSerializer()
 	dofile("Libs\\LibStub\\LibStub.lua")
 	dofile("RCLibs\\Serializer.lua")
+	if not CreateFrame then -- Not in game
+		dofile("test\\Ace3tests\\wow_api.lua")
+	end
+	dofile("Libs\\LibCompress\\LibCompress.lua")
 
 	local UTest = require 'test\\u-test\\u-test'
 
 	local RCSerializer = LibStub:GetLibrary("RCSerializer-3.0")
+
+	local LibCompress = LibStub:GetLibrary("LibCompress")
+
+	local IntToCompressedInt = RCSerializer.internals.IntToCompressedInt
+	local CompressedIntToInt = RCSerializer.internals.CompressedIntToInt
 
 	-- From AceSerializer-3.0
 	local __myrand_n = 0
@@ -3571,6 +3580,50 @@ function TestSerializer()
 		     },
 		}
 		check(reconnect)
+
+		--[[
+		print("size", RCSerializer:Serialize(reconnect):len(), LibCompress:Compress(RCSerializer:Serialize(reconnect)):len())
+		local strCount = {}
+		local function f(t)
+			if type(t) == "string" then
+				strCount[t] = strCount[t] and strCount[t] + 1 or 1
+			elseif type(t) == "table" then
+				for k, v in pairs(t) do
+					f(k)
+					f(v)
+				end
+			end
+		end
+		f(reconnect)
+		local count = 0
+		for k, v in pairs(strCount) do
+			if v >= 2 then
+				count = count + 1
+				--print(k)
+			end
+		end
+		print("count", count)
+		--]]
+	end
+
+	function UTest.TestRepeatedString()
+		local t = {}
+		for i=1, 1000 do
+			table.insert(t, "abcdefg"..i)
+			table.insert(t, "abcdefg"..i)
+			table.insert(t, "abcdefg"..i)
+			table.insert(t, "abcdefg"..i)
+		end
+		check(t)
+	end
+
+	function UTest.TestCompressedInt()
+		UTest.equal(0, CompressedIntToInt(IntToCompressedInt(0)))
+		UTest.equal(1, CompressedIntToInt(IntToCompressedInt(1)))
+		for i=1, 10000 do
+			local n = math.random(0, 10000)
+			UTest.equal(n, CompressedIntToInt(IntToCompressedInt(n)))
+		end
 	end
 end
 
