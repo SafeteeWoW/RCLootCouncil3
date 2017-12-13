@@ -393,7 +393,7 @@ function RCSerializer:Deserialize(str)
 	strIndex = 0
 	wipe(indexToStr)
 	local STR_END = SEPARATOR_NUMBER.."END"
-	local iter = gmatch(str..STR_END, "([\002-\014])([^\002-\014]*)")
+	local iter = gmatch(str..STR_END, "(["..SEPARATOR_FIRST.."-"..SEPARATOR_LAST.."])([^"..SEPARATOR_FIRST.."-"..SEPARATOR_LAST.."]*)")
 	return pcall(DeserializeValue, iter)
 end
 
