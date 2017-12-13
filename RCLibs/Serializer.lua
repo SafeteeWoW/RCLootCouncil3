@@ -56,8 +56,8 @@ local serNegInf, serNegInfMac = "-1.#INF", "-inf"
 
 -- separator characters for serializer.
 -- Should replace these variable by constants for better performance later.
-local SEPARATOR_FIRST = '\001'
-local SEPARATOR_ESCAPE = '\001' -- Escape character
+local ESCAPE = '\001' -- Escape character
+local SEPARATOR_FIRST = '\002'
 local SEPARATOR_STRING = '\002'	-- string
 local SEPARATOR_NUMBER = '\003' -- Non floating number
 local SEPARATOR_FLOAT_MAN = '\004' -- Mantissa part of floating number
@@ -69,33 +69,56 @@ local SEPARATOR_ARRAY_END = '\009' -- Array ends
 local SEPARATOR_TRUE = '\010' -- true
 local SEPARATOR_FALSE = '\011' -- false
 local SEPARATOR_NIL = '\012' -- nil
-local SEPARATOR_STRING_REPLACEMENT = '\013' -- For strings that shown more than once
-local SEPARATOR_LAST = '\013'
+local SEPARATOR_STRING_REPLACEMENT = '\013' -- For strings that are replaced (encoded as "reused string index")
+local SEPARATOR_STRING_REUSED = '\014' -- For strings that are reused (encoded as original string)
+local SEPARATOR_LAST = '\014'
 
 -- For string replacment
 local strIndex = 0
 local strToIndex = {}
 local indexToStr = {}
+local counts = {}
 
 -- Serialization functions
 local function SerializeStringHelper(ch)	-- Used by SerializeValue for strings
 	local n = strbyte(ch)
-	if SEPARATOR_FIRST <= ch and ch <= SEPARATOR_LAST then
-		return SEPARATOR_ESCAPE..strchar(n+47)
+	if ch == ESCAPE and SEPARATOR_FIRST <= ch and ch <= SEPARATOR_LAST then
+		return ESCAPE..strchar(n+47)
 	else
 		return ch
 	end
 end
 
 local function IsTableArray(t)
-	local i = 0
-	for _, _ in pairs(t) do
-		i = i + 1
-		if rawget(t, i) == nil then -- There is some issue for AceDB if not to use rawget
+	local len = #t
+	local count = 0
+	for k, v in pairs(t) do
+		if type(k) ~= "number" then
+			return false
+		end
+		count = count + 1
+		if count > len then
 			return false
 		end
 	end
 	return true
+end
+
+-- Preprocess the value to get duplicate strings/number count
+local function GetValueCounts(v)
+	-- We use "^" as a value separator, followed by one byte for type indicator
+	local t = type(v)
+
+	if t == "string" then
+		counts[v] = counts[v] and counts[v] + 1 or 1
+	elseif t == "number" then
+		counts[v] = counts[v] and counts[v] + 1 or 1
+	elseif t == "table" then	-- ^T...^t = table (list of key,value pairs)
+		for k, v in pairs(v) do
+			nres = GetValueCounts( k)
+			nres = GetValueCounts(v)
+		end
+	end
 end
 
 local function SerializeValue(v, res, nres)
@@ -104,11 +127,17 @@ local function SerializeValue(v, res, nres)
 
 	if t == "string" then		-- ^S = string (escaped to remove nonprints, "^"s, etc)
 		if not strToIndex[v] then
-			res[nres+1] = SEPARATOR_STRING
-			res[nres+2] = gsub(v, ".", SerializeStringHelper)
-			nres = nres + 2
-			strToIndex[v] = strIndex
-			strIndex = strIndex + 1
+			if counts[v] > 1 and v:len() > tostring(strIndex):len() then
+				res[nres+1] = SEPARATOR_STRING_REUSED
+				res[nres+2] = gsub(v, ".", SerializeStringHelper)
+				nres = nres + 2
+				strToIndex[v] = strIndex
+				strIndex = strIndex + 1
+			else
+				res[nres+1] = SEPARATOR_STRING
+				res[nres+2] = gsub(v, ".", SerializeStringHelper)
+				nres = nres + 2
+			end
 		else
 			res[nres+1] = SEPARATOR_STRING_REPLACEMENT
 			res[nres+2] = tostring(strToIndex[v])
@@ -197,6 +226,12 @@ function RCSerializer:Serialize(...)
 	local nres = 0
 	strIndex = 0
 	wipe(strToIndex)
+	wipe(counts)
+
+	for i=1, select("#", ...) do
+		local v = select(i, ...)
+		GetValueCounts(v)
+	end
 
 	for i=1, select("#", ...) do
 		local v = select(i, ...)
@@ -252,7 +287,7 @@ local function DeserializeValue(iter, single, ctl, data)
 
 	local res
 	if ctl == SEPARATOR_STRING then
-		res = gsub(data, SEPARATOR_ESCAPE..".", DeserializeStringHelper)
+		res = gsub(data, ESCAPE..".", DeserializeStringHelper)
 		indexToStr[strIndex] = res
 		strIndex = strIndex + 1
 	elseif ctl == SEPARATOR_STRING_REPLACEMENT then
@@ -356,7 +391,7 @@ function RCSerializer:Deserialize(str)
 	strIndex = 0
 	wipe(indexToStr)
 	local STR_END = SEPARATOR_NUMBER.."END"
-	local iter = gmatch(str..STR_END, "([\002-\013])([^\002-\013]*)")
+	local iter = gmatch(str..STR_END, "([\002-\014])([^\002-\014]*)")
 	return pcall(DeserializeValue, iter)
 end
 
