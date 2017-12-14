@@ -85,7 +85,7 @@ local counts = {}
 -- Serialization functions
 local function SerializeStringHelper(ch)	-- Used by SerializeValue for strings
 	local n = strbyte(ch)
-	if ch == "ESCAPE" or (SEPARATOR_FIRST <= ch and ch <= SEPARATOR_LAST) then
+	if ch == ESCAPE or (SEPARATOR_FIRST <= ch and ch <= SEPARATOR_LAST) then
 		return ESCAPE..strchar(n+47)
 	else
 		return ch
@@ -275,7 +275,7 @@ local function DeserializeStringHelper(escape)
 	local n = strbyte(escape, 2, 2)
 	n = n - 47
 	local ch = strchar(n)
-	if SEPARATOR_FIRST <= ch and ch <= SEPARATOR_LAST then
+	if ch == ESCAPE or (SEPARATOR_FIRST <= ch and ch <= SEPARATOR_LAST) then
 		return ch
 	else
 		error("DeserializeStringHelper got called for '"..escape.."'?!?")  -- can't be reached unless regex is screwed up
