@@ -3,6 +3,7 @@
 
 function TestSerializer()
 	dofile("Libs\\LibStub\\LibStub.lua")
+	dofile("Libs\\AceSerializer-3.0\\AceSerializer-3.0.lua")
 	dofile("RCLibs\\Serializer.lua")
 	if not CreateFrame then -- Not in game
 		dofile("test\\Ace3tests\\wow_api.lua")
@@ -11,6 +12,7 @@ function TestSerializer()
 
 	local UTest = require 'test\\u-test\\u-test'
 
+	local AceSerializer = LibStub:GetLibrary("AceSerializer-3.0")
 	local RCSerializer = LibStub:GetLibrary("RCSerializer-3.0")
 
 	local LibCompress = LibStub:GetLibrary("LibCompress")
@@ -101,6 +103,18 @@ function TestSerializer()
 		for i=0, 255 do
 			local ch = string.char(i)
 			check(ch)
+		end
+		for i=0, 255 do
+			local ch = string.char(i)
+			check(ch..ch..ch..ch)
+		end
+		for i=0, 1000 do
+			str = ""
+			for i = 1, 10 do
+				local ch = string.char(i)
+				str = str..ch
+			end
+			check(str)
 		end
 	end
 
