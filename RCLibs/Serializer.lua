@@ -74,7 +74,7 @@ local SEPARATOR_STRING_REPLACEMENT = '\013' -- For strings that are replaced (en
 local SEPARATOR_STRING_REUSED = '\014' -- For strings that are reused (encoded as original string)
 local SEPARATOR_LAST = '\014'
 local CH_SEPARATOR_LAST = strbyte(SEPARATOR_LAST)
-local COMPRESSED_INT_BASE = 255 - CH_SEPARATOR_LAST
+local COMPRESSED_INT_BASE = 255 - strbyte("0") + 1
 
 -- For string replacment
 local strIndexSer = 0
@@ -127,12 +127,12 @@ end
 local function IntToCompressedInt(int)
 	local t = {}
 	if int == 0 then
-		return strchar(CH_SEPARATOR_LAST + 1)
+		return strchar(48)
 	else
 		while int > 0 do
 			local rem = int % COMPRESSED_INT_BASE
 			int = floor(int / COMPRESSED_INT_BASE)
-			local ch = strchar(rem + CH_SEPARATOR_LAST + 1)
+			local ch = strchar(rem + 48)
 			tinsert(t, 1, ch)
 		end
 		return tconcat(t)
@@ -143,7 +143,7 @@ local function CompressedIntToInt(cInt)
 	local int = 0
 	local multiplier = 1
 	for i=cInt:len(), 1, -1 do
-		local n = strbyte(cInt, i) - CH_SEPARATOR_LAST - 1
+		local n = strbyte(cInt, i) - 48
 		int = int + n * multiplier
 		multiplier = multiplier * COMPRESSED_INT_BASE
 	end
