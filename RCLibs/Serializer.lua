@@ -66,13 +66,12 @@ local SEPARATOR_FLOAT_EXP = '\005' -- Exponent part of floating number
 local SEPARATOR_TABLE_START = '\006' -- Table starts
 local SEPARATOR_TABLE_END = '\007' -- Table ends
 local SEPARATOR_ARRAY_START = '\008' -- Array starts
-local SEPARATOR_ARRAY_END = '\009' -- Array ends
-local SEPARATOR_TRUE = '\010' -- true
-local SEPARATOR_FALSE = '\011' -- false
-local SEPARATOR_NIL = '\012' -- nil
-local SEPARATOR_STRING_REPLACEMENT = '\013' -- For strings that are replaced (encoded as "reused string index")
-local SEPARATOR_STRING_REUSED = '\014' -- For strings that are reused (encoded as original string)
-local SEPARATOR_LAST = '\014'
+local SEPARATOR_TRUE = '\009' -- true
+local SEPARATOR_FALSE = '\010' -- false
+local SEPARATOR_NIL = '\011' -- nil
+local SEPARATOR_STRING_REPLACEMENT = '\012' -- For strings that are replaced (encoded as "reused string index")
+local SEPARATOR_STRING_REUSED = '\013' -- For strings that are reused (encoded as original string)
+local SEPARATOR_LAST = '\013'
 local CH_SEPARATOR_LAST = strbyte(SEPARATOR_LAST)
 local COMPRESSED_INT_BASE = 255 - strbyte("0") + 1
 
@@ -210,7 +209,7 @@ local function SerializeValue(v, res, nres)
 				nres = SerializeValue(v, res, nres)
 			end
 			nres=nres+1
-			res[nres] = SEPARATOR_ARRAY_END
+			res[nres] = SEPARATOR_TABLE_END
 		else
 			nres=nres+1
 			res[nres] = SEPARATOR_TABLE_START
@@ -390,7 +389,7 @@ local function DeserializeValue(iter, single, ctl, data)
 		local k = 1
 		while true do
 			ctl, data = iter()
-			if ctl == SEPARATOR_ARRAY_END then
+			if ctl == SEPARATOR_TABLE_END then
 				if data ~= "" then
 					error("Unexpected data for RCSerializer after array end marker")
 				end
