@@ -98,6 +98,9 @@ local function IsTableArray(t)
 		if type(k) ~= "number" then
 			return false
 		end
+		if k < 1 or k > len or k ~= math.floor(k) then
+			return false
+		end
 		count = count + 1
 		if count > len then
 			return false
