@@ -106,7 +106,11 @@ local function IsTableArray(t)
 			return false
 		end
 	end
-	return true
+	if count ~= len then
+		return false
+	else
+		return true
+	end
 end
 
 -- Preprocess the value to get duplicate strings/number count
