@@ -71,7 +71,9 @@ local SEPARATOR_FALSE = '\010' -- false
 local SEPARATOR_NIL = '\011' -- nil
 local SEPARATOR_STRING_REPLACEMENT = '\012' -- For strings that are replaced (encoded as "reused string index")
 local SEPARATOR_STRING_REUSED = '\013' -- For strings that are reused (encoded as original string)
-local SEPARATOR_LAST = '\013'
+local SEPARATOR_ITEM_STRING = '\014'
+local SEPARATOR_ITEM_STRING_REUSED = '\015'
+local SEPARATOR_LAST = '\015'
 local CH_SEPARATOR_LAST = strbyte(SEPARATOR_LAST)
 local COMPRESSED_INT_BASE = 255 - strbyte("0") + 1
 
@@ -80,6 +82,8 @@ local strIndexSer = 0
 local strToIndex = {}
 local indexToStr = {}
 local counts = {}
+local itemStringCount = 0
+local baseItemStringDecode = nil
 
 -- Serialization functions
 local function SerializeStringHelper(ch)	-- Used by SerializeValue for strings
@@ -89,6 +93,18 @@ local function SerializeStringHelper(ch)	-- Used by SerializeValue for strings
 	else
 		return ch
 	end
+end
+
+local function IsItemString(s)
+	if s:find("^item:%d+[%d:]*$") then
+		for v in s:gmatch(":([0-9]*)") do
+			if v == "0" then
+				return false
+			end
+		end
+		return true
+	end
+	return false
 end
 
 local function IsTableArray(t)
@@ -120,6 +136,9 @@ local function GetValueCounts(v)
 
 	if t == "string" then
 		counts[v] = counts[v] and counts[v] + 1 or 1
+		if IsItemString(v) then -- Item string
+			itemStringCount = itemStringCount + 1
+		end
 	elseif t == "number" then
 		counts[v] = counts[v] and counts[v] + 1 or 1
 	elseif t == "table" then	-- ^T...^t = table (list of key,value pairs)
@@ -156,6 +175,30 @@ local function CompressedIntToInt(cInt)
 	return int
 end
 
+local function EncodeItemString(values)
+	local s = {}
+	for _, v in ipairs(values) do
+		if v == 0 then
+			tinsert(s, "")
+		else
+			tinsert(s, tostring(v))
+		end
+	end
+	return tconcat(s, ":")
+end
+
+local function DecodeItemString(itemString)
+	local values = {}
+	for v in itemString:gmatch(":(-?[0-9]*)") do
+		if v == "" then
+			tinsert(values, 0)
+		else
+			tinsert(values, tonumber(v))
+		end
+	end
+	return values
+end
+
 local function SerializeValue(v, res, nres)
 	-- We use "^" as a value separator, followed by one byte for type indicator
 	local t = type(v)
@@ -168,10 +211,30 @@ local function SerializeValue(v, res, nres)
 				nres = nres + 2
 				strToIndex[v] = strIndexSer
 				strIndexSer = strIndexSer + 1
+				if IsItemString(v) then
+					res[nres-1] = SEPARATOR_ITEM_STRING_REUSED
+				end
 			else
 				res[nres+1] = SEPARATOR_STRING
 				res[nres+2] = gsub(v, ".", SerializeStringHelper)
 				nres = nres + 2
+				if IsItemString(v) then
+					res[nres-1] = SEPARATOR_ITEM_STRING
+				end
+			end
+			if IsItemString(v) then
+				local decode = DecodeItemString(v)
+				if not baseItemStringDecode then
+					baseItemStringDecode = decode
+					res[nres] = res[nres]:gsub("item:", "")
+				else
+					for k, v in ipairs(decode) do
+						if baseItemStringDecode[k] then
+							decode[k] = decode[k] - baseItemStringDecode[k]
+						end
+					end
+					res[nres] = gsub(EncodeItemString(decode), ".", SerializeStringHelper)
+				end
 			end
 		else
 			res[nres+1] = SEPARATOR_STRING_REPLACEMENT
@@ -262,6 +325,8 @@ function RCSerializer:Serialize(...)
 	strIndexSer = 1
 	wipe(strToIndex)
 	wipe(counts)
+	itemStringCount = 0
+	baseItemStringDecode = nil
 
 	for i=1, select("#", ...) do
 		local v = select(i, ...)
@@ -323,8 +388,39 @@ local function DeserializeValue(iter, single, ctl, data)
 	local res
 	if ctl == SEPARATOR_STRING then
 		res = gsub(data, ESCAPE..".", DeserializeStringHelper)
+	elseif ctl == SEPARATOR_ITEM_STRING then
+		res = gsub(data, ESCAPE..".", DeserializeStringHelper)
+		res = "item:"..res
+		local decode = DecodeItemString(res)
+		if not baseItemStringDecode then
+			baseItemStringDecode = decode
+		else
+			for k, v in ipairs(decode) do
+				if baseItemStringDecode[k] then
+					decode[k] = decode[k] + baseItemStringDecode[k]
+				end
+			end
+			res = "item:"..EncodeItemString(decode)
+		end
+
 	elseif ctl == SEPARATOR_STRING_REUSED then
 		res = gsub(data, ESCAPE..".", DeserializeStringHelper)
+		indexToStr[strIndexDeser] = res
+		strIndexDeser = strIndexDeser + 1
+	elseif ctl == SEPARATOR_ITEM_STRING_REUSED then
+		res = gsub(data, ESCAPE..".", DeserializeStringHelper)
+		res = "item:"..res
+		local decode = DecodeItemString(res)
+		if not baseItemStringDecode then
+			baseItemStringDecode = decode
+		else
+			for k, v in ipairs(decode) do
+				if baseItemStringDecode[k] then
+					decode[k] = decode[k] + baseItemStringDecode[k]
+				end
+			end
+			res = "item:"..EncodeItemString(decode)
+		end
 		indexToStr[strIndexDeser] = res
 		strIndexDeser = strIndexDeser + 1
 	elseif ctl == SEPARATOR_STRING_REPLACEMENT then
@@ -426,6 +522,7 @@ end
 -- @return true followed by a list of values, OR false followed by an error message
 function RCSerializer:Deserialize(str)
 	strIndexDeser = 1
+	baseItemStringDecode = nil
 	wipe(indexToStr)
 	local STR_END = SEPARATOR_NUMBER.."END"
 	local iter = gmatch(str..STR_END, "(["..SEPARATOR_FIRST.."-"..SEPARATOR_LAST.."])([^"..SEPARATOR_FIRST.."-"..SEPARATOR_LAST.."]*)")
