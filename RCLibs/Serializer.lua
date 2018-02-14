@@ -180,8 +180,10 @@ local function EncodeItemString(values)
 	for _, v in ipairs(values) do
 		if v == 0 then
 			tinsert(s, "")
+		elseif v > 0 then
+			tinsert(s, tostring(v*2))
 		else
-			tinsert(s, tostring(v))
+			tinsert(s, tostring((math.abs(v))*2+1))
 		end
 	end
 	return tconcat(s, ":")
@@ -193,7 +195,13 @@ local function DecodeItemString(itemString)
 		if v == "" then
 			tinsert(values, 0)
 		else
-			tinsert(values, tonumber(v))
+			local n = tonumber(v)
+			if n % 2 == 0 then
+				tinsert(values, tonumber(n/2))
+			else
+				tinsert(values, -tonumber((v-1)/2))
+			end
+
 		end
 	end
 	return values
